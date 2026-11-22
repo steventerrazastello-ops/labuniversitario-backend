@@ -1,0 +1,331 @@
+{
+  "info": {
+    "_postman_id": "267d49e5-05c9-42e8-844d-5701fd3dc56e",
+    "name": "LabUniversitario API REST",
+    "description": "Colección ejecutable de la Semana 5. Recorre autenticación, laboratorios, reservas, incidencias, validaciones, autorización y conflictos de negocio.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const d = new Date();",
+          "d.setUTCDate(d.getUTCDate() + 7);",
+          "pm.environment.set('futureDate', d.toISOString().slice(0, 10));"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "01 - Login solicitante",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"solicitante@lab.edu.pe\",\n  \"password\": \"Clave123!\"\n}" },
+        "url": "{{baseUrl}}/api/v1/auth/login"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Login 200', () => pm.response.to.have.status(200));",
+        "const body = pm.response.json();",
+        "pm.expect(body.rol).to.eql('SOLICITANTE');",
+        "pm.environment.set('requesterToken', body.accessToken);"
+      ] } }]
+    },
+    {
+      "name": "02 - Listar laboratorios",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{requesterToken}}" }],
+        "url": "{{baseUrl}}/api/v1/laboratorios"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Listado 200', () => pm.response.to.have.status(200));",
+        "const body = pm.response.json();",
+        "pm.expect(body.length).to.be.above(0);",
+        "pm.environment.set('laboratoryId', body[0].id);"
+      ] } }]
+    },
+    {
+      "name": "03 - Obtener laboratorio",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{requesterToken}}" }],
+        "url": "{{baseUrl}}/api/v1/laboratorios/{{laboratoryId}}"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Detalle 200', () => pm.response.to.have.status(200));",
+        "pm.expect(pm.response.json().id).to.eql(Number(pm.environment.get('laboratoryId')));"
+      ] } }]
+    },
+    {
+      "name": "04 - Consultar disponibilidad",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{requesterToken}}" }],
+        "url": "{{baseUrl}}/api/v1/laboratorios/{{laboratoryId}}/disponibilidad?fecha={{futureDate}}&horaInicio=10:00&horaFin=12:00&participantes=20"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Disponibilidad 200', () => pm.response.to.have.status(200));",
+        "pm.expect(pm.response.json().disponible).to.be.true;"
+      ] } }]
+    },
+    {
+      "name": "05 - Crear reserva",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{requesterToken}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"laboratorioId\": {{laboratoryId}},\n  \"fecha\": \"{{futureDate}}\",\n  \"horaInicio\": \"10:00\",\n  \"horaFin\": \"12:00\",\n  \"participantes\": 20,\n  \"actividad\": \"Taller de API REST\"\n}" },
+        "url": "{{baseUrl}}/api/v1/reservas"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Reserva creada 201', () => pm.response.to.have.status(201));",
+        "const body = pm.response.json();",
+        "pm.expect(body.estado).to.eql('PENDIENTE');",
+        "pm.environment.set('reservationId', body.id);"
+      ] } }]
+    },
+    {
+      "name": "06 - Rechazar reserva superpuesta",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{requesterToken}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"laboratorioId\": {{laboratoryId}},\n  \"fecha\": \"{{futureDate}}\",\n  \"horaInicio\": \"11:00\",\n  \"horaFin\": \"13:00\",\n  \"participantes\": 10,\n  \"actividad\": \"Reserva en conflicto\"\n}" },
+        "url": "{{baseUrl}}/api/v1/reservas"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Conflicto 409', () => pm.response.to.have.status(409));",
+        "pm.expect(pm.response.json().code).to.eql('RESERVA_HORARIO_OCUPADO');"
+      ] } }]
+    },
+    {
+      "name": "07 - Listar mis reservas",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{requesterToken}}" }],
+        "url": "{{baseUrl}}/api/v1/reservas/mias"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Mis reservas 200', () => pm.response.to.have.status(200));",
+        "pm.expect(pm.response.json().length).to.be.above(0);"
+      ] } }]
+    },
+    {
+      "name": "08 - Login coordinador",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"coordinador@lab.edu.pe\",\n  \"password\": \"Clave123!\"\n}" },
+        "url": "{{baseUrl}}/api/v1/auth/login"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Login coordinador 200', () => pm.response.to.have.status(200));",
+        "pm.environment.set('coordinatorToken', pm.response.json().accessToken);"
+      ] } }]
+    },
+    {
+      "name": "09 - Listar todas las reservas",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{coordinatorToken}}" }],
+        "url": "{{baseUrl}}/api/v1/reservas?page=0&size=20"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Reservas paginadas 200', () => pm.response.to.have.status(200));",
+        "pm.expect(pm.response.json()).to.have.property('contenido');"
+      ] } }]
+    },
+    {
+      "name": "10 - Aprobar reserva",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{coordinatorToken}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"estado\": \"APROBADA\",\n  \"motivo\": \"Cumple disponibilidad y capacidad\"\n}" },
+        "url": "{{baseUrl}}/api/v1/reservas/{{reservationId}}/decision"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Reserva aprobada 200', () => pm.response.to.have.status(200));",
+        "pm.expect(pm.response.json().estado).to.eql('APROBADA');"
+      ] } }]
+    },
+    {
+      "name": "11 - Cancelar reserva propia",
+      "request": {
+        "method": "PATCH",
+        "header": [{ "key": "Authorization", "value": "Bearer {{requesterToken}}" }],
+        "url": "{{baseUrl}}/api/v1/reservas/{{reservationId}}/cancelacion"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Reserva cancelada 200', () => pm.response.to.have.status(200));",
+        "pm.expect(pm.response.json().estado).to.eql('CANCELADA');"
+      ] } }]
+    },
+    {
+      "name": "12 - Crear incidencia",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{requesterToken}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"laboratorioId\": {{laboratoryId}},\n  \"tipo\": \"EQUIPO\",\n  \"prioridad\": \"ALTA\",\n  \"descripcion\": \"El proyector no muestra imagen\",\n  \"bloqueaUso\": false\n}" },
+        "url": "{{baseUrl}}/api/v1/incidencias"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Incidencia creada 201', () => pm.response.to.have.status(201));",
+        "const body = pm.response.json();",
+        "pm.expect(body.estado).to.eql('ABIERTA');",
+        "pm.environment.set('incidenceId', body.id);"
+      ] } }]
+    },
+    {
+      "name": "13 - Listar mis incidencias",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{requesterToken}}" }],
+        "url": "{{baseUrl}}/api/v1/incidencias/mias"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Mis incidencias 200', () => pm.response.to.have.status(200));",
+        "pm.expect(pm.response.json().length).to.be.above(0);"
+      ] } }]
+    },
+    {
+      "name": "14 - Login técnico",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"tecnico@lab.edu.pe\",\n  \"password\": \"Clave123!\"\n}" },
+        "url": "{{baseUrl}}/api/v1/auth/login"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Login técnico 200', () => pm.response.to.have.status(200));",
+        "pm.environment.set('technicianToken', pm.response.json().accessToken);"
+      ] } }]
+    },
+    {
+      "name": "15 - Listar todas las incidencias",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{technicianToken}}" }],
+        "url": "{{baseUrl}}/api/v1/incidencias?page=0&size=20"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Incidencias paginadas 200', () => pm.response.to.have.status(200));",
+        "pm.expect(pm.response.json()).to.have.property('contenido');"
+      ] } }]
+    },
+    {
+      "name": "16 - Resolver incidencia",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{technicianToken}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"estado\": \"RESUELTA\",\n  \"prioridad\": \"ALTA\",\n  \"diagnostico\": \"Cable HDMI deteriorado\",\n  \"solucion\": \"Se reemplazó el cable y se validó la proyección\"\n}" },
+        "url": "{{baseUrl}}/api/v1/incidencias/{{incidenceId}}/estado"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Incidencia resuelta 200', () => pm.response.to.have.status(200));",
+        "pm.expect(pm.response.json().estado).to.eql('RESUELTA');"
+      ] } }]
+    },
+    {
+      "name": "17 - Login administrador",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"admin@lab.edu.pe\",\n  \"password\": \"Clave123!\"\n}" },
+        "url": "{{baseUrl}}/api/v1/auth/login"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Login administrador 200', () => pm.response.to.have.status(200));",
+        "pm.environment.set('adminToken', pm.response.json().accessToken);"
+      ] } }]
+    },
+    {
+      "name": "18 - Crear laboratorio",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"codigo\": \"LAB-PM-01\",\n  \"nombre\": \"Laboratorio Postman\",\n  \"ubicacion\": \"Pabellón de pruebas\",\n  \"capacidad\": 25\n}" },
+        "url": "{{baseUrl}}/api/v1/laboratorios"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Laboratorio creado 201', () => pm.response.to.have.status(201));",
+        "pm.environment.set('createdLabId', pm.response.json().id);"
+      ] } }]
+    },
+    {
+      "name": "19 - Actualizar laboratorio",
+      "request": {
+        "method": "PUT",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"nombre\": \"Laboratorio Postman actualizado\",\n  \"ubicacion\": \"Pabellón de pruebas - piso 2\",\n  \"capacidad\": 30,\n  \"operativo\": true\n}" },
+        "url": "{{baseUrl}}/api/v1/laboratorios/{{createdLabId}}"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Laboratorio actualizado 200', () => pm.response.to.have.status(200));",
+        "pm.expect(pm.response.json().capacidad).to.eql(30);"
+      ] } }]
+    },
+    {
+      "name": "20 - Desactivar laboratorio",
+      "request": {
+        "method": "DELETE",
+        "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+        "url": "{{baseUrl}}/api/v1/laboratorios/{{createdLabId}}"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Laboratorio desactivado 204', () => pm.response.to.have.status(204));"
+      ] } }]
+    },
+    {
+      "name": "21 - Validación de solicitud inválida",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{requesterToken}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": { "mode": "raw", "raw": "{\n  \"laboratorioId\": {{laboratoryId}},\n  \"fecha\": \"{{futureDate}}\",\n  \"horaInicio\": \"08:00\",\n  \"horaFin\": \"09:00\",\n  \"participantes\": 0,\n  \"actividad\": \"\"\n}" },
+        "url": "{{baseUrl}}/api/v1/reservas"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Datos inválidos 400', () => pm.response.to.have.status(400));",
+        "const body = pm.response.json();",
+        "pm.expect(body.code).to.eql('VALIDATION_ERROR');",
+        "pm.expect(body.fieldErrors).to.be.an('object');"
+      ] } }]
+    },
+    {
+      "name": "22 - Acceso sin token",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/api/v1/laboratorios"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('Sin autenticación 401', () => pm.response.to.have.status(401));",
+        "pm.expect(pm.response.json().code).to.eql('UNAUTHORIZED');"
+      ] } }]
+    }
+  ]
+}
